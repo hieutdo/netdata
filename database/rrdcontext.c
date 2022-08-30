@@ -49,6 +49,9 @@ typedef enum {
     RRD_FLAG_UPDATE_REASON_DB_ROTATION             = (1 << 28), // this context changed because of a db rotation
     RRD_FLAG_UPDATE_REASON_UNUSED                  = (1 << 29), // this context is not used anymore
     RRD_FLAG_UPDATE_REASON_CHANGED_FLAGS           = (1 << 30), // this context is not used anymore
+
+    // DO NOT ADD (1 << 31) or bigger!
+    // runtime error: left shift of 1 by 31 places cannot be represented in type 'int'
 } RRD_FLAGS;
 
 #define RRD_FLAG_ALL_UPDATE_REASONS                   ( \
@@ -577,7 +580,7 @@ static void rrdmetric_conflict_callback(const char *id __maybe_unused, void *old
         char uuid1[UUID_STR_LEN], uuid2[UUID_STR_LEN];
         uuid_unparse(rm->uuid, uuid1);
         uuid_unparse(rm_new->uuid, uuid2);
-        internal_error(true, "RRDMETRIC: '%s' is linked to RRDDIM '%s' but they have different UUIDs. RRDMETRIC has '%s', RRDDIM has '%s'", string2str(rm->id), rm->rrddim->id, uuid1, uuid2);
+        internal_error(true, "RRDMETRIC: '%s' is linked to RRDDIM '%s' but they have different UUIDs. RRDMETRIC has '%s', RRDDIM has '%s'", string2str(rm->id), rrddim_id(rm->rrddim), uuid1, uuid2);
     }
 
     if(rm->rrddim != rm_new->rrddim)
@@ -678,19 +681,19 @@ static void rrdmetric_trigger_updates(RRDMETRIC *rm, bool force, bool escalate) 
 
 static inline void rrdmetric_from_rrddim(RRDDIM *rd) {
     if(unlikely(!rd->rrdset))
-        fatal("RRDMETRIC: rrddim '%s' does not have a rrdset.", rd->id);
+        fatal("RRDMETRIC: rrddim '%s' does not have a rrdset.", rrddim_id(rd));
 
     if(unlikely(!rd->rrdset->rrdhost))
-        fatal("RRDMETRIC: rrdset '%s' does not have a rrdhost", rd->rrdset->id);
+        fatal("RRDMETRIC: rrdset '%s' does not have a rrdhost", rrdset_id(rd->rrdset));
 
     if(unlikely(!rd->rrdset->rrdinstance))
-        fatal("RRDMETRIC: rrdset '%s' does not have a rrdinstance", rd->rrdset->id);
+        fatal("RRDMETRIC: rrdset '%s' does not have a rrdinstance", rrdset_id(rd->rrdset));
 
     RRDINSTANCE *ri = rrdinstance_acquired_value(rd->rrdset->rrdinstance);
 
     RRDMETRIC trm = {
-        .id = string_strdupz(rd->id),
-        .name = string_strdupz(rd->name),
+        .id = string_dup(rd->id),
+        .name = string_dup(rd->name),
         .flags = RRD_FLAG_NONE,
         .rrddim = rd,
     };
@@ -707,14 +710,14 @@ static inline void rrdmetric_from_rrddim(RRDDIM *rd) {
 #define rrddim_get_rrdmetric(rd) rrddim_get_rrdmetric_with_trace(rd, __FUNCTION__)
 static inline RRDMETRIC *rrddim_get_rrdmetric_with_trace(RRDDIM *rd, const char *function) {
     if(unlikely(!rd->rrdmetric)) {
-        error("RRDMETRIC: RRDDIM '%s' is not linked to an RRDMETRIC at %s()", rd->id, function);
+        error("RRDMETRIC: RRDDIM '%s' is not linked to an RRDMETRIC at %s()", rrddim_id(rd), function);
         return NULL;
     }
 
     RRDMETRIC *rm = rrdmetric_acquired_value(rd->rrdmetric);
 
     if(unlikely(rm->rrddim != rd))
-        fatal("RRDMETRIC: '%s' is not linked to RRDDIM '%s' at %s()", string2str(rm->id), rd->id, function);
+        fatal("RRDMETRIC: '%s' is not linked to RRDDIM '%s' at %s()", string2str(rm->id), rrddim_id(rd), function);
 
     return rm;
 }
@@ -858,7 +861,7 @@ static void rrdinstance_conflict_callback(const char *id __maybe_unused, void *o
         char uuid1[UUID_STR_LEN], uuid2[UUID_STR_LEN];
         uuid_unparse(ri->uuid, uuid1);
         uuid_unparse(*ri->rrdset->chart_uuid, uuid2);
-        internal_error(true, "RRDINSTANCE: '%s' is linked to RRDSET '%s' but they have different UUIDs. RRDINSTANCE has '%s', RRDSET has '%s'", string2str(ri->id), ri->rrdset->id, uuid1, uuid2);
+        internal_error(true, "RRDINSTANCE: '%s' is linked to RRDSET '%s' but they have different UUIDs. RRDINSTANCE has '%s', RRDSET has '%s'", string2str(ri->id), rrdset_id(ri->rrdset), uuid1, uuid2);
     }
 
     if(ri->name != ri_new->name) {
@@ -1111,10 +1114,10 @@ static void rrdinstance_trigger_updates(RRDINSTANCE *ri, bool force, bool escala
 
 static inline void rrdinstance_from_rrdset(RRDSET *st) {
     RRDCONTEXT trc = {
-        .id = string_strdupz(st->context),
-        .title = string_strdupz(st->title),
-        .units = string_strdupz(st->units),
-        .family = string_strdupz(st->family),
+        .id = string_dup(st->context),
+        .title = string_dup(st->title),
+        .units = string_dup(st->units),
+        .family = string_dup(st->family),
         .priority = st->priority,
         .chart_type = st->chart_type,
         .flags = RRD_FLAG_NONE,
@@ -1125,11 +1128,11 @@ static inline void rrdinstance_from_rrdset(RRDSET *st) {
     RRDCONTEXT *rc = rrdcontext_acquired_value(rca);
 
     RRDINSTANCE tri = {
-        .id = string_strdupz(st->id),
-        .name = string_strdupz(st->name),
-        .units = string_strdupz(st->units),
-        .family = string_strdupz(st->family),
-        .title = string_strdupz(st->title),
+        .id = string_dup(st->id),
+        .name = string_dup(st->name),
+        .units = string_dup(st->units),
+        .family = string_dup(st->family),
+        .title = string_dup(st->title),
         .chart_type = st->chart_type,
         .priority = st->priority,
         .update_every = st->update_every,
@@ -1223,14 +1226,14 @@ static inline void rrdinstance_from_rrdset(RRDSET *st) {
 #define rrdset_get_rrdinstance(st) rrdset_get_rrdinstance_with_trace(st, __FUNCTION__);
 static inline RRDINSTANCE *rrdset_get_rrdinstance_with_trace(RRDSET *st, const char *function) {
     if(unlikely(!st->rrdinstance)) {
-        error("RRDINSTANCE: RRDSET '%s' is not linked to an RRDINSTANCE at %s()", st->id, function);
+        error("RRDINSTANCE: RRDSET '%s' is not linked to an RRDINSTANCE at %s()", rrdset_id(st), function);
         return NULL;
     }
 
     RRDINSTANCE *ri = rrdinstance_acquired_value(st->rrdinstance);
 
     if(unlikely(ri->rrdset != st))
-        fatal("RRDINSTANCE: '%s' is not linked to RRDSET '%s' at %s()", string2str(ri->id), st->id, function);
+        fatal("RRDINSTANCE: '%s' is not linked to RRDSET '%s' at %s()", string2str(ri->id), rrdset_id(st), function);
 
     return ri;
 }
@@ -1268,7 +1271,7 @@ static inline void rrdinstance_updated_rrdset_name(RRDSET *st) {
     if(unlikely(!ri)) return;
 
     STRING *old = ri->name;
-    ri->name = string_strdupz(st->name);
+    ri->name = string_dup(st->name);
 
     if(ri->name != old)
         rrd_flag_set_updated(ri, RRD_FLAG_UPDATE_REASON_CHANGED_NAME);
@@ -1945,7 +1948,7 @@ void rrdcontext_hub_checkpoint_command(void *ptr) {
 
     if(rrdhost_flag_check(host, RRDHOST_FLAG_ACLK_STREAM_CONTEXTS)) {
         info("RRDCONTEXT: received checkpoint command for claim id '%s', node id '%s', while node '%s' has an active context streaming.",
-              cmd->claim_id, cmd->node_id, host->hostname);
+              cmd->claim_id, cmd->node_id, rrdhost_hostname(host));
 
         // disable it temporarily, so that our worker will not attempt to send messages in parallel
         rrdhost_flag_clear(host, RRDHOST_FLAG_ACLK_STREAM_CONTEXTS);
@@ -1955,7 +1958,7 @@ void rrdcontext_hub_checkpoint_command(void *ptr) {
 
     if(cmd->version_hash != our_version_hash) {
         error("RRDCONTEXT: received version hash %"PRIu64" for host '%s', does not match our version hash %"PRIu64". Sending snapshot of all contexts.",
-              cmd->version_hash, host->hostname, our_version_hash);
+              cmd->version_hash, rrdhost_hostname(host), our_version_hash);
 
 #ifdef ENABLE_ACLK
         // prepare the snapshot
@@ -1977,11 +1980,11 @@ void rrdcontext_hub_checkpoint_command(void *ptr) {
 #endif
     }
 
-    internal_error(true, "RRDCONTEXT: host '%s' enabling streaming of contexts", host->hostname);
+    internal_error(true, "RRDCONTEXT: host '%s' enabling streaming of contexts", rrdhost_hostname(host));
     rrdhost_flag_set(host, RRDHOST_FLAG_ACLK_STREAM_CONTEXTS);
     char node_str[UUID_STR_LEN];
     uuid_unparse_lower(*host->node_id, node_str);
-    log_access("ACLK REQ [%s (%s)]: STREAM CONTEXTS ENABLED", node_str, host->hostname);
+    log_access("ACLK REQ [%s (%s)]: STREAM CONTEXTS ENABLED", node_str, rrdhost_hostname(host));
 }
 
 void rrdcontext_hub_stop_streaming_command(void *ptr) {
@@ -2006,12 +2009,12 @@ void rrdcontext_hub_stop_streaming_command(void *ptr) {
 
     if(!rrdhost_flag_check(host, RRDHOST_FLAG_ACLK_STREAM_CONTEXTS)) {
         error("RRDCONTEXT: received stop streaming command for claim id '%s', node id '%s', but node '%s' does not have active context streaming. Ignoring command.",
-              cmd->claim_id, cmd->node_id, host->hostname);
+              cmd->claim_id, cmd->node_id, rrdhost_hostname(host));
 
         return;
     }
 
-    internal_error(true, "RRDCONTEXT: host '%s' disabling streaming of contexts", host->hostname);
+    internal_error(true, "RRDCONTEXT: host '%s' disabling streaming of contexts", rrdhost_hostname(host));
     rrdhost_flag_clear(host, RRDHOST_FLAG_ACLK_STREAM_CONTEXTS);
 }
 
@@ -2378,7 +2381,7 @@ static inline int rrdcontext_to_json_callback(const char *id, void *value, void 
 
 int rrdcontext_to_json(RRDHOST *host, BUFFER *wb, time_t after, time_t before, RRDCONTEXT_TO_JSON_OPTIONS options, const char *context, SIMPLE_PATTERN *chart_label_key, SIMPLE_PATTERN *chart_labels_filter, SIMPLE_PATTERN *chart_dimensions) {
     if(!host->rrdctx) {
-        error("%s(): request for host '%s' that does not have rrdcontexts initialized.", __FUNCTION__, host->hostname);
+        error("%s(): request for host '%s' that does not have rrdcontexts initialized.", __FUNCTION__, rrdhost_hostname(host));
         return HTTP_RESP_NOT_FOUND;
     }
 
@@ -2418,7 +2421,7 @@ int rrdcontext_to_json(RRDHOST *host, BUFFER *wb, time_t after, time_t before, R
 
 int rrdcontexts_to_json(RRDHOST *host, BUFFER *wb, time_t after, time_t before, RRDCONTEXT_TO_JSON_OPTIONS options, SIMPLE_PATTERN *chart_label_key, SIMPLE_PATTERN *chart_labels_filter, SIMPLE_PATTERN *chart_dimensions) {
     if(!host->rrdctx) {
-        error("%s(): request for host '%s' that does not have rrdcontexts initialized.", __FUNCTION__, host->hostname);
+        error("%s(): request for host '%s' that does not have rrdcontexts initialized.", __FUNCTION__, rrdhost_hostname(host));
         return HTTP_RESP_NOT_FOUND;
     }
 
@@ -2440,7 +2443,7 @@ int rrdcontexts_to_json(RRDHOST *host, BUFFER *wb, time_t after, time_t before, 
                        ",\n\t\"machine_guid\": \"%s\""
                        ",\n\t\"node_id\": \"%s\""
                        ",\n\t\"claim_id\": \"%s\""
-                   , host->hostname
+                   , rrdhost_hostname(host)
                    , host->machine_guid
                    , node_uuid
                    , host->aclk_state.claimed_id ? host->aclk_state.claimed_id : ""
@@ -2743,7 +2746,7 @@ static void rrdcontext_garbage_collect(void) {
 
                 if(dictionary_del_having_write_lock((DICTIONARY *)host->rrdctx, string2str(rc->id)) != 0)
                     error("RRDCONTEXT: '%s' of host '%s' failed to be deleted from rrdcontext dictionary.",
-                          string2str(rc->id), host->hostname);
+                          string2str(rc->id), rrdhost_hostname(host));
             }
             else {
                 RRDINSTANCE *ri;
@@ -2895,7 +2898,7 @@ void *rrdcontext_main(void *ptr) {
                         // delete it from the master dictionary
                         if(dictionary_del((DICTIONARY *)host->rrdctx, string2str(rc->id)) != 0)
                             error("RRDCONTEXT: '%s' of host '%s' failed to be deleted from rrdcontext dictionary.",
-                                  string2str(id), host->hostname);
+                                  string2str(id), rrdhost_hostname(host));
 
                         string_freez(id);
                     }
